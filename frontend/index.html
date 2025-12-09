@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GR → AFD Mínimo</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+      }
+      .card {
+        width: 360px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+        padding: 20px;
+        border: 1px solid #e2e8f0;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 16px;
+        color: #475569;
+      }
+      .upload {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      input[type="file"] {
+        padding: 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+      }
+      button {
+        background: linear-gradient(135deg, #1e40af, #3b82f6);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.1s ease, box-shadow 0.1s ease;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(59, 130, 246, 0.35);
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 14px;
+      }
+      .ok {
+        color: #16a34a;
+      }
+      .erro {
+        color: #dc2626;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="card">
+        <h1>Conversor GR → AFD Mínimo</h1>
+        <p>Envie sua gramática (arquivo texto) ou digite abaixo para gerar o CSV.</p>
+
+        <div class="upload">
+          <label>
+            <input
+              type="radio"
+              value="arquivo"
+              v-model="modo"
+            />
+            Enviar arquivo
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="texto"
+              v-model="modo"
+            />
+            Digitar texto
+          </label>
+
+          <input
+            v-if="modo === 'arquivo'"
+            type="file"
+            accept=".txt"
+            @change="onFileChange"
+          />
+
+          <textarea
+            v-if="modo === 'texto'"
+            rows="6"
+            placeholder="Digite a gramática em BNF..."
+            v-model="texto"
+            style="resize: vertical; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px;"
+          ></textarea>
+
+          <button :disabled="loading || !podeEnviar" @click="enviar">
+            {{ loading ? "Processando..." : "Converter" }}
+          </button>
+        </div>
+
+        <div class="status" v-if="mensagem">
+          <span :class="ok ? 'ok' : 'erro'">{{ mensagem }}</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const { createApp, ref, computed } = Vue;
+
+      createApp({
+        setup() {
+          const file = ref(null);
+          const texto = ref("");
+          const modo = ref("arquivo");
+          const mensagem = ref("");
+          const ok = ref(false);
+          const loading = ref(false);
+
+          const onFileChange = (ev) => {
+            file.value = ev.target.files[0] || null;
+            mensagem.value = "";
+          };
+
+          const podeEnviar = computed(() => {
+            if (modo.value === "arquivo") return !!file.value;
+            return (texto.value || "").trim().length > 0;
+          });
+
+          const enviar = async () => {
+            if (!podeEnviar.value) {
+              mensagem.value =
+                modo.value === "arquivo"
+                  ? "Selecione um arquivo .txt."
+                  : "Digite a gramática.";
+              ok.value = false;
+              return;
+            }
+            loading.value = true;
+            mensagem.value = "";
+            ok.value = false;
+
+            try {
+              const form = new FormData();
+              if (modo.value === "arquivo") {
+                form.append("file", file.value);
+              } else {
+                form.append("text", texto.value);
+              }
+
+              const resp = await fetch("http://localhost:5000/converter", {
+                method: "POST",
+                body: form,
+              });
+
+              if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.erro || "Falha na conversão");
+              }
+
+              const blob = await resp.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "saida_afd.csv";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+
+              mensagem.value = "Arquivo gerado com sucesso!";
+              ok.value = true;
+            } catch (err) {
+              mensagem.value = err.message || "Erro inesperado.";
+              ok.value = false;
+            } finally {
+              loading.value = false;
+            }
+          };
+
+          return {
+            file,
+            texto,
+            modo,
+            mensagem,
+            ok,
+            loading,
+            onFileChange,
+            enviar,
+            podeEnviar,
+          };
+        },
+      }).mount("#app");
+    </script>
+  </body>
+</html>
+
+
